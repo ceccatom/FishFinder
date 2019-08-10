@@ -1,2 +1,17 @@
 
 \.idea/
+
+__pycache__/
+
+blade/
+
+old/
+
+\.DS_Store
+
+*.log
+
+data/*.npy
+
+data/*.torch
+models/data/saved_models\.md

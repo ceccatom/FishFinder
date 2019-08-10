@@ -8,7 +8,7 @@ import torch
 
 
 class Waterfalls(Dataset):
-    default_filepath = '../Waterfalls/Waterfalls_fish.mat'
+    default_filepath = '../DATASETS/Waterfalls/Waterfalls_fish.mat'
 
     def __init__(self, fpath=default_filepath, verbose=False, transform=None):
         # Open the HDF file in read mode (keep it opened during the data loading to speed up the process)
@@ -31,30 +31,34 @@ class Waterfalls(Dataset):
 
     def __getitem__(self, idx):
 
-        # Initialize sample
-        sample = {}
+        if isinstance(idx, slice):
+            return self.hdf_file['Parameters'].value[:, idx]
+        else:
+            # Initialize sample
+            sample = {}
 
-        # Get Parameters
-        sample['Parameters'] = {}
-        parameters = self.hdf_file['Parameters'].value[:, idx]
-        for param_idx, param_value in enumerate(parameters):
-            param_name_ref = self.hdf_file['ParametersNames'][param_idx, 0]
-            param_name = ''.join(map(chr, self.hdf_file[param_name_ref][:, 0]))
-            sample['Parameters'][param_name] = param_value
+            # Get Parameters
+            sample['Parameters'] = {}
+            parameters = self.hdf_file['Parameters'].value[:, idx]
+            for param_idx, param_value in enumerate(parameters):
+                param_name_ref = self.hdf_file['ParametersNames'][param_idx, 0]
+                param_name = ''.join(map(chr, self.hdf_file[param_name_ref][:, 0]))
+                sample['Parameters'][param_name] = param_value
 
-        # Get Path
-        path_ref = self.hdf_file['Paths'].value[0, idx]
-        sample['Paths'] = self.hdf_file[path_ref][:]
+            # Get Path
+            path_ref = self.hdf_file['Paths'].value[0, idx]
+            sample['Paths'] = self.hdf_file[path_ref][:]
 
-        # Get Waterfalls and Waterfalls Signal
-        sample['SignalWaterfalls'] = self.hdf_file['SignalWaterfalls'][:, :, idx]
-        sample['Waterfalls'] = self.hdf_file['Waterfalls'][:, :, idx]
+            # Get Waterfalls and Waterfalls Signal
+            sample['SignalWaterfalls'] = self.hdf_file['SignalWaterfalls'][:, :, idx]
+            sample['Waterfalls'] = self.hdf_file['Waterfalls'][:, :, idx]
 
-        # Sample transformation
-        if self.transform:
-            sample = self.transform(sample)
+            # Sample transformation
+            if self.transform:
+                sample = self.transform(sample)
 
-        return sample
+            return sample
+
 
     def close(self):
         # Close the HDF file
@@ -62,19 +66,19 @@ class Waterfalls(Dataset):
 
 
 # this line helps the code to understand if this file has been executed as script or has been imported as a module
-#%%
+# %%
 
 if __name__ == '__main__':
 
     # Initialize dataset
-    filepath = '../Waterfalls/Waterfalls_fish.mat'
+    filepath = '../DATASETS/Waterfalls/Waterfalls_fish.mat'
     dataset = Waterfalls(filepath, verbose=True)
 
     # Load sample
     idx = 0
     sample = dataset[idx]
 
-    #%% Plot
+    # %% Plot
 
     ### Create figure
     fig, axs = plt.subplots(3, 1, figsize=(12, 10), sharex=True)
@@ -107,5 +111,5 @@ if __name__ == '__main__':
     fig.tight_layout()
 
     fig.show()
-    #%% Close HDF file
+    # %% Close HDF file
     dataset.close()
