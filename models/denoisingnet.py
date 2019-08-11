@@ -1,6 +1,5 @@
 import torch
 from torch.utils.data import DataLoader, SubsetRandomSampler
-
 import utils
 from torch import nn
 from tqdm import tqdm
@@ -97,7 +96,7 @@ class DenoisingNet(nn.Module):
         x = self.decode(x, decoder_depth=depth)
         return x
 
-    def encode(self, x, encoder_depth=3):
+    def encode(self, x, encoder_depth=4):
         # Apply L1 Encoder
         x = self.encoder_l1(x)
 
@@ -115,7 +114,7 @@ class DenoisingNet(nn.Module):
 
         return x
 
-    def decode(self, x, decoder_depth=3):
+    def decode(self, x, decoder_depth=4):
 
         if decoder_depth > 3:
             # Apply L4 Decoder
