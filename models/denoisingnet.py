@@ -89,7 +89,7 @@ class DenoisingNet(nn.Module):
         self.block_l3 = [self.encoder_l3, self.decoder_l3]
         self.block_l4 = [self.encoder_l4, self.decoder_l4]
 
-    def forward(self, x, depth=3):
+    def forward(self, x, depth=4):
         x = self.encode(x, encoder_depth=depth)
         x = self.decode(x, decoder_depth=depth)
         return x
