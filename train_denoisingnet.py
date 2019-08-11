@@ -15,7 +15,7 @@ WATERFALLS_SIZE = (1200, 20)
 # Parameters
 verbose_flag = True
 plot_flag = False
-lr = 5*1e-3  # Learning rate
+lr = 1e-3  # Learning rate
 train_percentage = 0.98
 min_SNR = 0
 min_width = 0
