@@ -139,9 +139,8 @@ class DenoisingNet(nn.Module):
         predictions_soft = torch.Tensor().float().cpu().view((0, 0))
         labels = torch.Tensor().float().cpu().view((0, 0))
 
-        print('[Computing accuracy metrics...]')
-
-        net.eval()  # Validation Mode
+        print('[Evaluation of the test samples...]')
+        self.eval()  # Validation Mode
         with torch.no_grad():  # No need to track the gradients
 
             for batch in tqdm(dataloader_eval):
@@ -149,7 +148,7 @@ class DenoisingNet(nn.Module):
                 noisy_waterfalls = batch['Waterfalls'].to(device)
 
                 # Forward pass - Reconstructed Waterfalls
-                waterfalls_rec = net.forward(noisy_waterfalls, depth=encoding_depth)
+                waterfalls_rec = self.forward(noisy_waterfalls, depth=encoding_depth)
 
                 # Flatten the reconstructed waterfalls and append it to the predictions
                 predictions_soft = torch.cat((predictions_soft, waterfalls_rec.view([waterfalls_rec.size(0), -1])),
@@ -162,22 +161,23 @@ class DenoisingNet(nn.Module):
         predictions = utils.binary_threshold(predictions_soft, threshold=0.5).view([-1]).numpy()
         labels = labels.view([-1]).numpy()
 
+        print('[Computation of the accuracy metrics...]')
         # Collects several evaluation metrics
         result_metrics = {
-            'Accuracy': accuracy_score(labels, predictions),                   # Compute the Accuracy metric
+            'Accuracy': accuracy_score(labels, predictions),  # Compute the Accuracy metric
             'BalancedAccuracy': balanced_accuracy_score(labels, predictions),  # Compute the Balanced Accuracy metric
-            'F-Score': f1_score(labels, predictions),                          # Compute the F-Score metric
-            'Precision': precision_score(labels, predictions),                 # Compute the Precision metric
-            'Recall': recall_score(labels, predictions)                        # Compute the Recall metric
+            'F-Score': f1_score(labels, predictions),  # Compute the F-Score metric
+            'Precision': precision_score(labels, predictions),  # Compute the Precision metric
+            'Recall': recall_score(labels, predictions)  # Compute the Recall metric
         }
 
         if print_summary:
             num_ones = np.count_nonzero(labels)
-            num_zeros = len(labels)-num_ones
-            print('Performance evaluation ('+predictions_soft.shape[0].__str__()+' Samples)'
-                  + '\nPixels: '+num_zeros.__str__()+' Zeros, '+num_ones.__str__()+' Ones'
-                  + '\n\tAccuracy: '+result_metrics['Accuracy'].__str__()
-                  + '\n\tBalanced Accuracy: '+result_metrics['BalancedAccuracy'].__str__()
+            num_zeros = len(labels) - num_ones
+            print('Performance evaluation (' + predictions_soft.shape[0].__str__() + ' Samples)'
+                  + '\nPixels: ' + num_zeros.__str__() + ' Zeros, ' + num_ones.__str__() + ' Ones'
+                  + '\n\tAccuracy: ' + result_metrics['Accuracy'].__str__()
+                  + '\n\tBalanced Accuracy: ' + result_metrics['BalancedAccuracy'].__str__()
                   + '\n\tF-Score: ' + result_metrics['F-Score'].__str__()
                   + '\n\tPrecision: ' + result_metrics['Precision'].__str__()
                   + '\n\tRecall: ' + result_metrics['Recall'].__str__())
@@ -263,6 +263,7 @@ def train_network(net, dataloader_train, dataloader_eval, num_epochs, optimizer,
     return train_loss, eval_loss
 
 
+# Show a summary of DenoisingNet
 if __name__ == '__main__':
     # Load the trained model
     load_configuration = 'DAE4B_fd_c'
@@ -291,7 +292,19 @@ if __name__ == '__main__':
     # Compute the accuracy metrics
     metrics = net.accuracy(test_samples, print_summary=True)
 
+    # %% Analyze network weights
 
+    # Extract weights from the trained network
+    weights_l1 = net.encoder_l1[0].weight.data.numpy()  # Block 1 weights
+    weights_l2 = net.encoder_l2[0].weight.data.numpy()  # Block 2 weights
+    weights_l3 = net.encoder_l3[0].weight.data.numpy()  # Block 3 weights
+    weights_l4 = net.encoder_l4[0].weight.data.numpy()  # Block 4 weights
+
+    # Show learnt Conv2D kernels
+    utils.plot_kernels(weights_l1, 4, 2, 'Encoder Block 1 Kernels')
+    utils.plot_kernels(weights_l2, 4, 4, 'Encoder Block 2 Kernels')
+    utils.plot_kernels(weights_l2, 6, 5, 'Encoder Block 3 Kernels')
+    utils.plot_kernels(weights_l2, 8, 8, 'Encoder Block 4 Kernels')
 
     # %% View the reconstruction performance with random test sample
 

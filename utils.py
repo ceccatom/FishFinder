@@ -129,3 +129,18 @@ def size_calculator(dim, kernel_size, stride, padding, dilatation=1, inverse=Fal
         return 1 + (dim + 2 * padding - dilatation * (kernel_size - 1) - 1) / stride
     else:
         return (dim-1) * stride - 2 * padding + dilatation * (kernel_size - 1) + 1
+
+
+def plot_kernels(data, h_num, v_num, title):
+    fig, axs = plt.subplots(h_num, v_num, figsize=(8, 8))
+    shape = data.shape
+    data = data.reshape(shape[0] * shape[1], shape[2], shape[3])
+    for idx, ax in enumerate(axs.flatten()):
+        ax.set_xticks([])
+        ax.set_yticks([])
+        if idx < len(data):
+            ax.imshow(data[idx, :, :], cmap='gray')
+    plt.suptitle(title)
+    plt.tight_layout(rect=[0, 0, 1, 0.97], h_pad=0, w_pad=0)
+    plt.show()
+
