@@ -15,3 +15,5 @@ data/*.npy
 
 data/*.torch
 models/data/saved_models\.md
+
+__init__\.py
