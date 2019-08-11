@@ -266,7 +266,7 @@ def train_network(net, dataloader_train, dataloader_eval, num_epochs, optimizer,
 
 if __name__ == '__main__':
     # Load the trained model
-    load_configuration = 'DAE4B_fd'
+    load_configuration = 'DAE4B_fd_c'
     net_state_dict = torch.load('data/' + load_configuration + '_net_parameters.torch', map_location='cpu')
 
     # Initialize the network
@@ -309,7 +309,7 @@ if __name__ == '__main__':
     # Use the waterfalls sample to evaluate the model
     net.eval()
     with torch.no_grad():
-        output = net(waterfalls)
+        output = net(waterfalls, depth=4)
 
     # Plot the waterfalls, the output of the network and the waterfalls without the noise
     utils.plot_reconstruction(waterfalls, output, signals, parameters, hard_threshold=False, show_error=False)
