@@ -1,7 +1,10 @@
 import torch
+from torch.utils.data import DataLoader, SubsetRandomSampler
+
 import utils
 from torch import nn
 from tqdm import tqdm
+from sklearn.metrics import accuracy_score, balanced_accuracy_score, precision_score, recall_score, f1_score
 from load_data import Waterfalls
 import numpy as np
 
@@ -131,6 +134,57 @@ class DenoisingNet(nn.Module):
 
         return x
 
+    def accuracy(self, dataloader_eval, device=torch.device("cpu"), encoding_depth=4, print_summary=False):
+
+        # Empty tensors to store predictions and labels
+        predictions_soft = torch.Tensor().float().cpu().view((0, 0))
+        labels = torch.Tensor().float().cpu().view((0, 0))
+
+        print('[Computing accuracy metrics...]')
+
+        net.eval()  # Validation Mode
+        with torch.no_grad():  # No need to track the gradients
+
+            for batch in tqdm(dataloader_eval):
+                # Extract noisy waterfalls and move tensors to the selected device
+                noisy_waterfalls = batch['Waterfalls'].to(device)
+
+                # Forward pass - Reconstructed Waterfalls
+                waterfalls_rec = net.forward(noisy_waterfalls, depth=encoding_depth)
+
+                # Flatten the reconstructed waterfalls and append it to the predictions
+                predictions_soft = torch.cat((predictions_soft, waterfalls_rec.view([waterfalls_rec.size(0), -1])),
+                                             dim=0)
+
+                # Flatten the signals and append it to the labels
+                labels = torch.cat((labels, batch['SignalWaterfalls'].cpu().view([waterfalls_rec.size(0), -1])), dim=0)
+
+        # Compute hard prediction and convert data form tensors to numpy vectors
+        predictions = utils.binary_threshold(predictions_soft, threshold=0.5).view([-1]).numpy()
+        labels = labels.view([-1]).numpy()
+
+        # Collects several evaluation metrics
+        result_metrics = {
+            'Accuracy': accuracy_score(labels, predictions),                   # Compute the Accuracy metric
+            'BalancedAccuracy': balanced_accuracy_score(labels, predictions),  # Compute the Balanced Accuracy metric
+            'F-Score': f1_score(labels, predictions),                          # Compute the F-Score metric
+            'Precision': precision_score(labels, predictions),                 # Compute the Precision metric
+            'Recall': recall_score(labels, predictions)                        # Compute the Recall metric
+        }
+
+        if print_summary:
+            num_ones = np.count_nonzero(labels)
+            num_zeros = len(labels)-num_ones
+            print('Performance evaluation ('+predictions_soft.shape[0].__str__()+' Samples)'
+                  + '\nPixels: '+num_zeros.__str__()+' Zeros, '+num_ones.__str__()+' Ones'
+                  + '\n\tAccuracy: '+result_metrics['Accuracy'].__str__()
+                  + '\n\tBalanced Accuracy: '+result_metrics['BalancedAccuracy'].__str__()
+                  + '\n\tF-Score: ' + result_metrics['F-Score'].__str__()
+                  + '\n\tPrecision: ' + result_metrics['Precision'].__str__()
+                  + '\n\tRecall: ' + result_metrics['Recall'].__str__())
+
+        return result_metrics
+
 
 def freeze_block(block, freeze):
     for components in block:
@@ -140,7 +194,6 @@ def freeze_block(block, freeze):
 
 def train_network(net, dataloader_train, dataloader_eval, num_epochs, optimizer, device,
                   encoding_depth=3, freeze_l1=False, freeze_l2=False, freeze_l3=False):
-
     # Perform Greedy block-wise Training according with train configuration parameters
     freeze_block(net.block_l1, freeze_l1)  # Freeze Block L1 if needed
     freeze_block(net.block_l2, freeze_l2)  # Freeze Block L2 if needed
@@ -212,7 +265,6 @@ def train_network(net, dataloader_train, dataloader_eval, num_epochs, optimizer,
 
 
 if __name__ == '__main__':
-
     # Load the trained model
     load_configuration = 'DAE4B_fd'
     net_state_dict = torch.load('data/' + load_configuration + '_net_parameters.torch', map_location='cpu')
@@ -226,17 +278,30 @@ if __name__ == '__main__':
     dataset = Waterfalls(fpath='../../DATASETS/Waterfalls/Waterfalls_fish.mat',
                          transform=utils.NormalizeSignal((1200, 20)))
 
-    # %% Test the network with random test sample
+    # %% Evaluate the accuracy metrics
 
     # Load the test-sample indices from the saved configuration
-    test_idx = np.load('data/' + load_configuration + '_data.npy')[2]
+    test_indices = np.load('data/' + load_configuration + '_data.npy')[2]
+
+    # Load test data efficiently
+    test_samples = DataLoader(dataset, batch_size=32,
+                              shuffle=False,
+                              sampler=SubsetRandomSampler(test_indices),
+                              collate_fn=utils.waterfalls_collate)
+
+    # Compute the accuracy metrics
+    metrics = net.accuracy(test_samples, print_summary=True)
+
+
+
+    # %% View the reconstruction performance with random test sample
 
     # Select randomly one sample
-    idx = test_idx[np.random.randint(len(test_idx))]
+    idx = test_indices[np.random.randint(len(test_indices))]
 
     # Extracts data from the sample and transform them into tensors
-    waterfalls = utils.get_tensor(dataset[idx]['Waterfalls'], float_cast=True, unsqueeze=2).to('cpu')
-    signals = utils.get_tensor(dataset[idx]['SignalWaterfalls'], float_cast=True, unsqueeze=2).to('cpu')
+    waterfalls = utils.get_tensor(dataset[idx]['Waterfalls'], float_cast=True, unsqueeze=2).cpu()
+    signals = utils.get_tensor(dataset[idx]['SignalWaterfalls'], float_cast=True, unsqueeze=2).cpu()
 
     # Extract parameters from the sample
     parameters = dataset[idx]['Parameters']
