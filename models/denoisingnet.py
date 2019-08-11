@@ -23,65 +23,65 @@ class DenoisingNet(nn.Module):
         # ENCODER BLOCKS
         # Encoder Block L1
         self.encoder_l1 = nn.Sequential(
-            nn.Conv2d(1, 8, (6, 3), stride=(2, 1), padding=(2, 1)),  # output dimensions: 8 * 600 * 20
+            nn.Conv2d(1, 32, (6, 3), stride=(2, 1), padding=(2, 1)),  # output dimensions: 32 * 600 * 20
             nn.ReLU(True),
-            nn.BatchNorm2d(8),
+            nn.BatchNorm2d(32),
             nn.Dropout2d(p=0.1)
         )
 
         # Encoder Block L2
         self.encoder_l2 = nn.Sequential(
-            nn.Conv2d(8, 16, (4, 3), stride=(2, 1), padding=(1, 2),
-                      dilation=(1, 2)),  # output dimensions: 16 * 300 * 20
+            nn.Conv2d(32, 64, (4, 3), stride=(2, 1), padding=(1, 2),
+                      dilation=(1, 2)),  # output dimensions: 64 * 300 * 20
             nn.ReLU(True),
-            nn.BatchNorm2d(16),
+            nn.BatchNorm2d(64),
             nn.Dropout2d(0.1)
         )
 
         # Encoder Block L3
         self.encoder_l3 = nn.Sequential(
-            nn.Conv2d(16, 32, 5, stride=(3, 1), padding=(1, 0)),  # output dimensions: 32 * 100 * 16
+            nn.Conv2d(64, 128, 5, stride=(3, 1), padding=(1, 0)),  # output dimensions: 128 * 100 * 16
             nn.ReLU(True),
-            nn.BatchNorm2d(32),
+            nn.BatchNorm2d(128),
             nn.Dropout2d(0.1)
         )
 
         # Encoder Block L4
         self.encoder_l4 = nn.Sequential(
-            nn.Conv2d(32, 64, 4, stride=2, padding=1),  # output dimensions: 64 * 50 * 8
+            nn.Conv2d(128, 256, 4, stride=2, padding=1),  # output dimensions: 256 * 50 * 8
             nn.ReLU(True),
-            nn.BatchNorm2d(64),
+            nn.BatchNorm2d(256),
             nn.Dropout2d(0.1)
         )
 
         # DECODER BLOCKS
         # Decoder Block L4
         self.decoder_l4 = nn.Sequential(
-            nn.ConvTranspose2d(64, 32, 4, stride=2, padding=1),  # output dimensions: 32 * 100 * 16
+            nn.ConvTranspose2d(256, 128, 4, stride=2, padding=1),  # output dimensions: 128 * 100 * 16
             nn.ReLU(True),
-            nn.BatchNorm2d(32),
+            nn.BatchNorm2d(128),
             nn.Dropout2d(0.1)
         )
 
         # Decoder Block L3
         self.decoder_l3 = nn.Sequential(
-            nn.ConvTranspose2d(32, 16, 5, stride=(3, 1), padding=(1, 0)),  # output dimensions: 16 * 300 * 20
+            nn.ConvTranspose2d(128, 64, 5, stride=(3, 1), padding=(1, 0)),  # output dimensions: 64 * 300 * 20
             nn.ReLU(True),
-            nn.BatchNorm2d(16),
+            nn.BatchNorm2d(64),
             nn.Dropout2d(0.1)
         )
         # Decoder Block L2
         self.decoder_l2 = nn.Sequential(
-            nn.ConvTranspose2d(16, 8, (4, 3), stride=(2, 1), padding=(1, 2),
-                               dilation=(1, 2)),  # output dimensions: 8 * 600 * 20
+            nn.ConvTranspose2d(64, 32, (4, 3), stride=(2, 1), padding=(1, 2),
+                               dilation=(1, 2)),  # output dimensions: 32 * 600 * 20
             nn.ReLU(True),
-            nn.BatchNorm2d(8),
+            nn.BatchNorm2d(32),
             nn.Dropout2d(0.1),
         )
 
         # Decoder Block L1
         self.decoder_l1 = nn.Sequential(
-            nn.ConvTranspose2d(8, 1, (6, 3), stride=(2, 1), padding=(2, 1)),  # output dimensions: 1 * 1200 * 20
+            nn.ConvTranspose2d(32, 1, (6, 3), stride=(2, 1), padding=(2, 1)),  # output dimensions: 1 * 1200 * 20
             nn.BatchNorm2d(1),
             nn.Sigmoid()
         )
