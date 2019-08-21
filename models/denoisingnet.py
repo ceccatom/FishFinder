@@ -6,6 +6,7 @@ from tqdm import tqdm
 from sklearn.metrics import accuracy_score, balanced_accuracy_score, precision_score, recall_score, f1_score
 from load_data import Waterfalls
 import numpy as np
+from models.support_modules import EncoderBlock, LinearBlock
 
 
 class DenoisingNet(nn.Module):
@@ -19,121 +20,51 @@ class DenoisingNet(nn.Module):
         # Verbose Mode
         self.verbose = verbose
 
+        # Layers configuration
+        configuration = {
+            'N': 6,
+            'in_channels': [1, 16, 32, 64, 128, 128],
+            'out_channels': [16, 32, 64, 128, 128, 128],
+            'kernel': [(6, 3), (4, 3), 5, 4, 4, (3, 4)],
+            'stride': [(2, 1), (2, 1), (3, 1), 2, 2, 1],
+            'padding': [(2, 1), (1, 1), (1, 0), 1, 1, (1, 0)],
+            'dilation': [1, 1, 1, 1, 1, 1],
+            'dropout': 0.1
+        }
+
         # ENCODER BLOCKS
-        # Encoder Block L1
-        self.encoder_l1 = nn.Sequential(
-            nn.Conv2d(1, 32, (6, 3), stride=(2, 1), padding=(2, 1)),  # output dimensions: 32 * 600 * 20
-            nn.ReLU(True),
-            nn.BatchNorm2d(32),
-            nn.Dropout2d(p=0.1)
-        )
+        self.blocks = nn.ModuleList([EncoderBlock(configuration, i) for i in range(configuration['N'])])
 
-        # Encoder Block L2
-        self.encoder_l2 = nn.Sequential(
-            nn.Conv2d(32, 64, (4, 3), stride=(2, 1), padding=(1, 2),
-                      dilation=(1, 2)),  # output dimensions: 64 * 300 * 20
-            nn.ReLU(True),
-            nn.BatchNorm2d(64),
-            nn.Dropout2d(0.1)
-        )
+        # LINEAR BLOCKS
+        self.blocks.append(LinearBlock(3200, 2048, idx=6, flatten=True))
+        self.blocks.append(LinearBlock(2048, 1024, idx=7))
+        self.blocks.append(LinearBlock(1024, 512, idx=8))
 
-        # Encoder Block L3
-        self.encoder_l3 = nn.Sequential(
-            nn.Conv2d(64, 128, 5, stride=(3, 1), padding=(1, 0)),  # output dimensions: 128 * 100 * 16
-            nn.ReLU(True),
-            nn.BatchNorm2d(128),
-            nn.Dropout2d(0.1)
-        )
-
-        # Encoder Block L4
-        self.encoder_l4 = nn.Sequential(
-            nn.Conv2d(128, 256, 4, stride=2, padding=1),  # output dimensions: 256 * 50 * 8
-            nn.ReLU(True),
-            nn.BatchNorm2d(256),
-            nn.Dropout2d(0.1)
-        )
-
-        # DECODER BLOCKS
-        # Decoder Block L4
-        self.decoder_l4 = nn.Sequential(
-            nn.ConvTranspose2d(256, 128, 4, stride=2, padding=1),  # output dimensions: 128 * 100 * 16
-            nn.ReLU(True),
-            nn.BatchNorm2d(128),
-            nn.Dropout2d(0.1)
-        )
-
-        # Decoder Block L3
-        self.decoder_l3 = nn.Sequential(
-            nn.ConvTranspose2d(128, 64, 5, stride=(3, 1), padding=(1, 0)),  # output dimensions: 64 * 300 * 20
-            nn.ReLU(True),
-            nn.BatchNorm2d(64),
-            nn.Dropout2d(0.1)
-        )
-        # Decoder Block L2
-        self.decoder_l2 = nn.Sequential(
-            nn.ConvTranspose2d(64, 32, (4, 3), stride=(2, 1), padding=(1, 2),
-                               dilation=(1, 2)),  # output dimensions: 32 * 600 * 20
-            nn.ReLU(True),
-            nn.BatchNorm2d(32),
-            nn.Dropout2d(0.1),
-        )
-
-        # Decoder Block L1
-        self.decoder_l1 = nn.Sequential(
-            nn.ConvTranspose2d(32, 1, (6, 3), stride=(2, 1), padding=(2, 1)),  # output dimensions: 1 * 1200 * 20
-            nn.BatchNorm2d(1),
-            nn.Sigmoid()
-        )
-
-        # Blocks pointer
-        self.block_l1 = [self.encoder_l1, self.decoder_l1]
-        self.block_l2 = [self.encoder_l2, self.decoder_l2]
-        self.block_l3 = [self.encoder_l3, self.decoder_l3]
-        self.block_l4 = [self.encoder_l4, self.decoder_l4]
-
-    def forward(self, x, depth=4):
+    def forward(self, x, depth):
         x = self.encode(x, encoder_depth=depth)
         x = self.decode(x, decoder_depth=depth)
         return x
 
-    def encode(self, x, encoder_depth=4):
-        # Apply L1 Encoder
-        x = self.encoder_l1(x)
+    def train_block(self, idx):
+        for n, block in enumerate(self.blocks):
+            if n == idx:
+                block.train()
+            else:
+                block.eval()
 
-        if encoder_depth > 1:
-            # Apply L2 Encoder
-            x = self.encoder_l2(x)
-
-        if encoder_depth > 2:
-            # Apply L3 Encoder
-            x = self.encoder_l3(x)
-
-        if encoder_depth > 3:
-            # Apply L4 Encoder
-            x = self.encoder_l4(x)
+    def encode(self, x, encoder_depth):
+        for i in range(encoder_depth):
+            x = self.blocks[i].encoder(x)
 
         return x
 
-    def decode(self, x, decoder_depth=4):
-
-        if decoder_depth > 3:
-            # Apply L4 Decoder
-            x = self.decoder_l4(x)
-
-        if decoder_depth > 2:
-            # Apply L3 Decoder
-            x = self.decoder_l3(x)
-
-        if decoder_depth > 1:
-            # Apply L2 Decoder
-            x = self.decoder_l2(x)
-
-        # Apply L1 Decoder
-        x = self.decoder_l1(x)
+    def decode(self, x, decoder_depth):
+        for i in reversed(range(decoder_depth)):
+            x = self.blocks[i].decoder(x)
 
         return x
 
-    def accuracy(self, dataloader_eval, device=torch.device("cpu"), encoding_depth=4, print_summary=False):
+    def accuracy(self, dataloader_eval, device=torch.device("cpu"), depth=9, print_summary=False):
 
         # Empty tensors to store predictions and labels
         predictions_soft = torch.Tensor().float().cpu().view((0, 0))
@@ -148,7 +79,7 @@ class DenoisingNet(nn.Module):
                 noisy_waterfalls = batch['Waterfalls'].to(device)
 
                 # Forward pass - Reconstructed Waterfalls
-                waterfalls_rec = self.forward(noisy_waterfalls, depth=encoding_depth)
+                waterfalls_rec = self.forward(noisy_waterfalls, depth=depth)
 
                 # Flatten the reconstructed waterfalls and append it to the predictions
                 predictions_soft = torch.cat((predictions_soft, waterfalls_rec.view([waterfalls_rec.size(0), -1])),
@@ -185,25 +116,26 @@ class DenoisingNet(nn.Module):
         return result_metrics
 
 
-def freeze_block(block, freeze):
-    for components in block:
-        for param in components:
-            param.requires_grad = not freeze
+def freeze_block(block, freeze, verbose=False):
+    for param in block.parameters():
+        param.requires_grad = not freeze
+    if verbose:
+        print('Block ' + block.index.__str__() + ' Frozen: ' + freeze.__str__())
 
 
-def train_network(net, dataloader_train, dataloader_eval, num_epochs, optimizer, device,
-                  encoding_depth=3, freeze_l1=False, freeze_l2=False, freeze_l3=False):
-    # Perform Greedy block-wise Training according with train configuration parameters
-    freeze_block(net.block_l1, freeze_l1)  # Freeze Block L1 if needed
-    freeze_block(net.block_l2, freeze_l2)  # Freeze Block L2 if needed
-    freeze_block(net.block_l3, freeze_l3)  # Freeze Block L3 if needed
-
+def train_network(net, dataloader_train, dataloader_eval, num_epochs, optimizer, device, depth=1, full_train=False):
     # Empty lists to store training statistics
     train_loss = []
     eval_loss = []
 
     # Training Phase
-    net.train()
+    if full_train:
+        # Set the entire network in train mode
+        net.train()
+    else:
+        # Set only the desired block in train mode
+        net.train_block(depth - 1)
+
     for epoch in range(num_epochs):
 
         # Show the progress bar
@@ -224,7 +156,7 @@ def train_network(net, dataloader_train, dataloader_eval, num_epochs, optimizer,
             optimizer.zero_grad()
 
             # Forward pass
-            output = net.forward(waterfalls, depth=encoding_depth)
+            output = net.forward(waterfalls, depth=depth)
             loss = net.loss_fn(output, signals)
 
             # Backward pass
@@ -250,7 +182,7 @@ def train_network(net, dataloader_train, dataloader_eval, num_epochs, optimizer,
                 signals = batch['SignalWaterfalls'].to(device)
 
                 # Forward pass
-                output = net.forward(waterfalls, depth=encoding_depth)
+                output = net.forward(waterfalls, depth=depth)
 
                 # Get loss value
                 loss = net.loss_fn(output, signals)
@@ -266,7 +198,7 @@ def train_network(net, dataloader_train, dataloader_eval, num_epochs, optimizer,
 # Show a summary of DenoisingNet
 if __name__ == '__main__':
     # Load the trained model
-    load_configuration = 'DAE4B_fd_c'
+    load_configuration = 'DAE9B-4B-fd'
     net_state_dict = torch.load('data/' + load_configuration + '_net_parameters.torch', map_location='cpu')
 
     # Initialize the network
@@ -290,21 +222,21 @@ if __name__ == '__main__':
                               collate_fn=utils.waterfalls_collate)
 
     # Compute the accuracy metrics
-    metrics = net.accuracy(test_samples, print_summary=True)
+    # metrics = net.accuracy(test_samples, print_summary=True)
 
     # %% Analyze network weights
 
     # Extract weights from the trained network
-    weights_l1 = net.encoder_l1[0].weight.data.numpy()  # Block 1 weights
-    weights_l2 = net.encoder_l2[0].weight.data.numpy()  # Block 2 weights
-    weights_l3 = net.encoder_l3[0].weight.data.numpy()  # Block 3 weights
-    weights_l4 = net.encoder_l4[0].weight.data.numpy()  # Block 4 weights
+    weights_l1 = net.blocks[0].encoder[0].weight.data.numpy()  # Block 1 weights
+    weights_l2 = net.blocks[1].encoder[0].weight.data.numpy()  # Block 2 weights
+    weights_l3 = net.blocks[2].encoder[0].weight.data.numpy()  # Block 3 weights
+    weights_l4 = net.blocks[3].encoder[0].weight.data.numpy()  # Block 4 weights
 
     # Show learnt Conv2D kernels
-    utils.plot_kernels(weights_l1, 4, 2, 'Encoder Block 1 Kernels')
-    utils.plot_kernels(weights_l2, 4, 4, 'Encoder Block 2 Kernels')
-    utils.plot_kernels(weights_l2, 6, 5, 'Encoder Block 3 Kernels')
-    utils.plot_kernels(weights_l2, 8, 8, 'Encoder Block 4 Kernels')
+    # utils.plot_kernels(weights_l1, 4, 2, 'Encoder Block 1 Kernels')
+    # utils.plot_kernels(weights_l2, 4, 4, 'Encoder Block 2 Kernels')
+    # utils.plot_kernels(weights_l2, 6, 5, 'Encoder Block 3 Kernels')
+    # utils.plot_kernels(weights_l2, 8, 8, 'Encoder Block 4 Kernels')
 
     # %% View the reconstruction performance with random test sample
 
@@ -321,7 +253,7 @@ if __name__ == '__main__':
     # Use the waterfalls sample to evaluate the model
     net.eval()
     with torch.no_grad():
-        output = net(waterfalls, depth=4)
+        output = net.forward(waterfalls, depth=4)
 
     # Plot the waterfalls, the output of the network and the waterfalls without the noise
     utils.plot_reconstruction(waterfalls, output, signals, parameters, hard_threshold=False, show_error=False)

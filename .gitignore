@@ -17,3 +17,15 @@ data/*.torch
 models/data/saved_models\.md
 
 __init__\.py
+
+models/data/DAE9B_fd_data.npy
+
+models/data/DAE9B_fd_f_data.npy
+
+models/data/DAE9B_fd_f_net_parameters.torch
+
+models/data/DAE9B_fd_net_parameters.torch
+
+models/data/DAE9B-4B-fd_data.npy
+
+models/data/DAE9B-4B-fd_net_parameters.torch

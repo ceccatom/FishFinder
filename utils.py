@@ -67,7 +67,7 @@ def fast_collate(batch):
 
 
 def get_tensor(element, float_cast=False, unsqueeze=0):
-    out_tensor = torch.LongTensor(element)
+    out_tensor = torch.tensor(element)  # torch.LongTensor(element)
 
     if float_cast:
         out_tensor = out_tensor.float()
