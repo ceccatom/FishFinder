@@ -29,3 +29,11 @@ models/data/DAE9B_fd_net_parameters.torch
 models/data/DAE9B-4B-fd_data.npy
 
 models/data/DAE9B-4B-fd_net_parameters.torch
+
+core
+
+train_dense.py
+
+models/denseclassifier.py
+
+models/data/
