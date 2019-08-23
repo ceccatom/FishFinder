@@ -66,8 +66,11 @@ def fast_collate(batch):
     return batch_dictionary
 
 
-def get_tensor(element, float_cast=False, unsqueeze=0):
-    out_tensor = torch.tensor(element)  # torch.LongTensor(element)
+def get_tensor(element, float_cast=False, unsqueeze=0, long=False):
+    if long:
+        out_tensor = torch.LongTensor(element)
+    else:
+        out_tensor = torch.tensor(element)  # torch.LongTensor(element)
 
     if float_cast:
         out_tensor = out_tensor.float()
@@ -163,6 +166,7 @@ class NormalizeSignal(object):
 
         return sample
 
+
 class OneCol(object):
     """Normalize 'Waterfalls' between 0 and 1
 
@@ -178,7 +182,8 @@ class OneCol(object):
 
     def __call__(self, sample):
 
-        sample['SignalWaterfalls'] = np.array([sample['Parameters']['num_Targets'], sample['Parameters']['num_Targets']]) # np.sum(np.transpose(sample['SignalWaterfalls'])[:][0:1])
+        sample['SignalWaterfalls'] = np.array([sample['Parameters']['num_Targets'], sample['Parameters'][
+            'num_Targets']])  # np.sum(np.transpose(sample['SignalWaterfalls'])[:][0:1])
 
         return sample
 
@@ -204,23 +209,23 @@ def plot_kernels(data, h_num, v_num, title):
     plt.show()
 
 
-def update_onehot_labels(batch, labels_container, velocity_onehot, width_onehot, targets_onehot):
-
+def update_onehot_labels(batch, labels_container, velocity_labels, width_labels, targets_labels):
     # Move labels to its tensor container
     labels_container[:][0] = torch.LongTensor(batch['Parameters']['velocity'])
     labels_container[:][1] = torch.LongTensor(batch['Parameters']['width'])
     labels_container[:][2] = torch.LongTensor(batch['Parameters']['num_Targets'])
 
     # Reset labels_onehot for each mini-batch
-    velocity_onehot.zero_()
-    width_onehot.zero_()
-    targets_onehot.zero_()
+    velocity_labels.zero_()
+    width_labels.zero_()
+    targets_labels.zero_()
 
     # Rearrange labels by using the One-Hot-Encoding scheme. Fast operations by using tensors allocated in GPU
-    velocity_onehot.scatter_(1, (labels_container[:][0]-15).view([-1, 1]), 1)
-    width_onehot.scatter_(1, (labels_container[:][1]-3).view([-1, 1]), 1)
-    targets_onehot.scatter_(1, labels_container[:][2].view([-1, 1]), 1)
+    velocity_labels.scatter_(1, (labels_container[:][0] - 15).view([-1, 1]), 1)
+    width_labels.scatter_(1, (labels_container[:][1] - 3).view([-1, 1]), 1)
+    targets_labels.scatter_(1, labels_container[:][2].view([-1, 1]), 1)
     pass
+
 
 def plot_confusion_matrix(cm, classes,
                           normalize=False,
@@ -273,5 +278,48 @@ def plot_confusion_matrix(cm, classes,
     pass
 
 
+def get_labels(batch, device):
+    waterfalls = batch['Waterfalls'].to(device)
+    velocity_labels = get_tensor(batch['Parameters']['velocity'], long=True).to(device) - 15
+    width_labels = get_tensor(batch['Parameters']['width'], long=True).to(device) - 3
+    targets_labels = get_tensor(batch['Parameters']['num_Targets'], long=True).to(device)
+
+    return waterfalls, velocity_labels, width_labels, targets_labels
 
 
+# def plot_compressed(net, input, original, parameters, hard_threshold=True, show_error=False):
+#     num_subplots = 10
+#
+#     data = np.zeros((num_subplots, 1200, 20))
+#     data[0][:][:] = raw.cpu().squeeze().numpy()
+#     if hard_threshold:
+#         data[1][:][:] = binary_threshold(rec.cpu().squeeze().numpy(), 0.5)
+#     else:
+#         data[1][:][:] = rec.cpu().squeeze().numpy()
+#     data[2][:][:] = original.cpu().squeeze().numpy()
+#
+#     titles = ['SNR ' + parameters['SNR'].__str__()
+#               + ' | Velocity ' + parameters['velocity'].__str__()
+#               + ' | Width ' + parameters['width'].__str__()
+#               + ' | #Targets ' + parameters['num_Targets'].__str__()
+#               + '\nRAW data (Waterfalls)',
+#               'DAE Output (Reconstructed Signal Waterfalls)',
+#               'True paths (Signal Waterfalls)']
+#
+#     if show_error:
+#         data[3][:][:] = (original - rec).cpu().squeeze().numpy()
+#         titles.append('Reconstruction Error')
+#     else:
+#         num_subplots = 3
+#
+#     v_min = data.min()
+#     v_max = data.max()
+#
+#     fig, axs = plt.subplots(num_subplots, 1, figsize=(12, 10), sharex=True)
+#
+#     for idx in range(num_subplots):
+#         axs[idx].set_title(titles[idx])
+#         axs[idx].imshow(data[idx], aspect='auto', interpolation='none', origin='lower', vmin=v_min, vmax=v_max)
+#
+#     fig.tight_layout()
+#     fig.show()

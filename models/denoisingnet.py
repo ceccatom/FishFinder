@@ -198,7 +198,7 @@ def train_network(net, dataloader_train, dataloader_eval, num_epochs, optimizer,
 # Show a summary of DenoisingNet
 if __name__ == '__main__':
     # Load the trained model
-    load_configuration = 'DAE9B-4B-fd'
+    load_configuration = 'DAE9B-9B-fd'
     net_state_dict = torch.load('data/' + load_configuration + '_net_parameters.torch', map_location='cpu')
 
     # Initialize the network
@@ -253,7 +253,9 @@ if __name__ == '__main__':
     # Use the waterfalls sample to evaluate the model
     net.eval()
     with torch.no_grad():
-        output = net.forward(waterfalls, depth=4)
+        output = net.forward(waterfalls, depth=6)
 
     # Plot the waterfalls, the output of the network and the waterfalls without the noise
     utils.plot_reconstruction(waterfalls, output, signals, parameters, hard_threshold=False, show_error=False)
+
+
