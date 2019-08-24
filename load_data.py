@@ -3,6 +3,7 @@
 
 import h5py
 import matplotlib.pyplot as plt
+import numpy as np
 from torch.utils.data import Dataset
 import torch
 
@@ -65,6 +66,26 @@ class Waterfalls(Dataset):
         self.hdf_file.close()
 
 
+def get_indices():
+
+    # The used Training Dataset is the 80% of the entire dataset. The first 48000 samples are used to train the models
+    # and tune the hyper-parameters whereas the remaining 20% is used to test them. Among the training samples,
+    # 80% are used to train the model and the 20% is used as validation to get an unbiased estimation of the performance
+
+    train_part = np.linspace(0, 38400, 38400, endpoint=False, dtype=int).tolist()
+    validation_part = np.linspace(38400, 48000, 9600, endpoint=False, dtype=int).tolist()
+    training_set = np.append(train_part, validation_part)
+    test_part = np.linspace(48000, 60000, 12000, endpoint=False, dtype=int).tolist()
+
+    # [0 |--------------------- Training Dataset ---------------------| 48000
+    # [0 |------------ TRAINING -----------| 38400 |--- VALIDATION ---| 48000 |----- TEST -----| 60000]
+    # TRAINING      38400 samples
+    # VALIDATION     9600 samples
+    # TEST          12000 samples
+
+    return train_part, validation_part, test_part
+
+
 # this line helps the code to understand if this file has been executed as script or has been imported as a module
 # %%
 
@@ -75,7 +96,7 @@ if __name__ == '__main__':
     dataset = Waterfalls(filepath, verbose=True)
 
     # Load sample
-    idx = 0
+    idx = np.random.randint(0, 60000)
     sample = dataset[idx]
 
     # %% Plot
