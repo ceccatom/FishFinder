@@ -13,15 +13,12 @@ class EncoderBlock(nn.Module):
             nn.Conv2d(configuration['in_channels'][idx], configuration['out_channels'][idx],
                       kernel_size=configuration['kernel'][idx], stride=configuration['stride'][idx],
                       padding=configuration['padding'][idx], dilation=configuration['dilation'][idx]),
-            # output dimensions: 32 * 600 * 20
             nn.ReLU(True),
             nn.BatchNorm2d(configuration['out_channels'][idx]),
             nn.Dropout2d(p=configuration['dropout'])
         )
 
         if idx != 0:
-            # module = nn.Sequential(nn.ReLU(True), nn.BatchNorm2d(configuration['in_channels'][idx]),
-            #                       nn.Dropout2d(p=configuration['dropout']))
             self.decoder = nn.Sequential(
                 nn.ConvTranspose2d(configuration['out_channels'][idx], configuration['in_channels'][idx],
                                    kernel_size=configuration['kernel'][idx], stride=configuration['stride'][idx],
@@ -31,7 +28,6 @@ class EncoderBlock(nn.Module):
                 nn.Dropout2d(p=configuration['dropout'])
             )
         else:
-            # module = nn.Sequential(nn.BatchNorm2d(1), nn.Sigmoid())
             self.decoder = nn.Sequential(
                 nn.ConvTranspose2d(configuration['out_channels'][idx], configuration['in_channels'][idx],
                                    kernel_size=configuration['kernel'][idx], stride=configuration['stride'][idx],
@@ -39,14 +35,6 @@ class EncoderBlock(nn.Module):
                 nn.BatchNorm2d(configuration['in_channels'][idx]),
                 nn.Sigmoid()
             )
-
-        #     # Decoder Block
-        # self.decoder = nn.Sequential(
-        #     nn.ConvTranspose2d(configuration['out_channels'][idx], configuration['in_channels'][idx],
-        #                        kernel_size=configuration['kernel'][idx], stride=configuration['stride'][idx],
-        #                        padding=configuration['padding'][idx], dilation=configuration['dilation'][idx]),
-        #     module
-        # )
 
     def forward(self, x):
         x = self.encoder(x)

@@ -4,9 +4,9 @@ import utils
 from torch import nn
 from tqdm import tqdm
 from sklearn.metrics import accuracy_score, balanced_accuracy_score, precision_score, recall_score, f1_score
-from load_data import Waterfalls
+from load_data import Waterfalls, get_indices
 import numpy as np
-from models.support_modules import EncoderBlock, LinearBlock
+from models.support_modules import EncoderBlock
 
 
 class DenoisingNet(nn.Module):
@@ -35,11 +35,6 @@ class DenoisingNet(nn.Module):
         # ENCODER BLOCKS
         self.blocks = nn.ModuleList([EncoderBlock(configuration, i) for i in range(configuration['N'])])
 
-        # LINEAR BLOCKS
-        self.blocks.append(LinearBlock(3200, 2048, idx=6, flatten=True))
-        self.blocks.append(LinearBlock(2048, 1024, idx=7))
-        self.blocks.append(LinearBlock(1024, 512, idx=8))
-
     def forward(self, x, depth):
         x = self.encode(x, encoder_depth=depth)
         x = self.decode(x, decoder_depth=depth)
@@ -64,7 +59,7 @@ class DenoisingNet(nn.Module):
 
         return x
 
-    def accuracy(self, dataloader_eval, device=torch.device("cpu"), depth=9, print_summary=False):
+    def accuracy(self, dataloader, device=torch.device("cpu"), depth=6, print_summary=False):
 
         # Empty tensors to store predictions and labels
         predictions_soft = torch.Tensor().float().cpu().view((0, 0))
@@ -74,7 +69,7 @@ class DenoisingNet(nn.Module):
         self.eval()  # Validation Mode
         with torch.no_grad():  # No need to track the gradients
 
-            for batch in tqdm(dataloader_eval):
+            for batch in tqdm(dataloader):
                 # Extract noisy waterfalls and move tensors to the selected device
                 noisy_waterfalls = batch['Waterfalls'].to(device)
 
@@ -120,13 +115,17 @@ def freeze_block(block, freeze, verbose=False):
     for param in block.parameters():
         param.requires_grad = not freeze
     if verbose:
-        print('Block ' + block.index.__str__() + ' Frozen: ' + freeze.__str__())
+        print('\tBlock ' + block.index.__str__() + ' Frozen: ' + freeze.__str__())
 
 
 def train_network(net, dataloader_train, dataloader_eval, num_epochs, optimizer, device, depth=1, full_train=False):
+
     # Empty lists to store training statistics
     train_loss = []
     eval_loss = []
+    predictions = []
+    train_accuracy = []
+    eval_accuracy = []
 
     # Training Phase
     if full_train:
@@ -145,6 +144,7 @@ def train_network(net, dataloader_train, dataloader_eval, num_epochs, optimizer,
                                                                  + epoch_progress
                                                                  + ' {postfix}, {elapsed}<{remaining}]')
         batch_loss_train = []
+        batch_predictions = []
 
         for batch in dataloader_train:
 
@@ -192,11 +192,13 @@ def train_network(net, dataloader_train, dataloader_eval, num_epochs, optimizer,
         if net.verbose:
             print('Validation Loss: ' + eval_loss[-1].__str__())
 
-    return train_loss, eval_loss
+    return train_loss, eval_loss, train_accuracy, eval_accuracy
 
 
 # Show a summary of DenoisingNet
 if __name__ == '__main__':
+    train_part, validation_part, test_part = get_indices()
+
     # Load the trained model
     load_configuration = 'DAE9B-9B-fd'
     net_state_dict = torch.load('data/' + load_configuration + '_net_parameters.torch', map_location='cpu')
@@ -211,14 +213,9 @@ if __name__ == '__main__':
                          transform=utils.NormalizeSignal((1200, 20)))
 
     # %% Evaluate the accuracy metrics
-
-    # Load the test-sample indices from the saved configuration
-    test_indices = np.load('data/' + load_configuration + '_data.npy')[2]
-
-    # Load test data efficiently
     test_samples = DataLoader(dataset, batch_size=32,
                               shuffle=False,
-                              sampler=SubsetRandomSampler(test_indices),
+                              sampler=SubsetRandomSampler(test_part),
                               collate_fn=utils.waterfalls_collate)
 
     # Compute the accuracy metrics
@@ -241,7 +238,7 @@ if __name__ == '__main__':
     # %% View the reconstruction performance with random test sample
 
     # Select randomly one sample
-    idx = test_indices[np.random.randint(len(test_indices))]
+    idx = test_part[np.random.randint(len(test_part))]
 
     # Extracts data from the sample and transform them into tensors
     waterfalls = utils.get_tensor(dataset[idx]['Waterfalls'], float_cast=True, unsqueeze=2).cpu()
