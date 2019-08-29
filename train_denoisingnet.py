@@ -4,7 +4,6 @@ from torch.utils.data import DataLoader
 from load_data import Waterfalls, get_indices
 from torch.utils.data.sampler import SubsetRandomSampler
 from torch.backends import cudnn
-import numpy as np
 import time
 from models.denoisingnet import DenoisingNet, train_network, freeze_block
 

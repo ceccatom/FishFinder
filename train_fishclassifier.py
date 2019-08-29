@@ -3,7 +3,6 @@ import utils
 from torch.utils.data import DataLoader
 from load_data import Waterfalls, get_indices
 from torch.utils.data.sampler import SubsetRandomSampler
-import numpy as np
 import time
 from models.denoisingnet import DenoisingNet
 from models.fishclassifier import FishClassifier, train_network

@@ -5,7 +5,6 @@ from load_data import Waterfalls, get_indices
 import numpy as np
 from models.denoisingnet import DenoisingNet
 from models.fishclassifier import FishClassifier
-from torchvision import transforms
 
 WATERFALLS_SIZE = (1200, 20)
 train_part, validation_part, test_part = get_indices()
