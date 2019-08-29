@@ -1,5 +1,5 @@
 # FishFinder - Computational Neuroscience Project
-Fish Tracking through Deep Learning. School of Fish detection and classification in underwater environments using synthetic SONAR Waterfalls. The project report is in the root of the repository.
+Fish Tracking through Deep Learning. School of Fish detection and classification in underwater environments using synthetic SONAR Waterfalls. The project __report__ is in the root of the repository.
 
 ## Dependencies
 scipy
