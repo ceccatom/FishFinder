@@ -6,6 +6,7 @@ from tqdm import tqdm
 from sklearn.metrics import accuracy_score, balanced_accuracy_score, precision_score, recall_score, f1_score
 from load_data import Waterfalls, get_indices
 import numpy as np
+from torchvision import transforms
 from models.support_modules import EncoderBlock
 
 
@@ -59,33 +60,40 @@ class DenoisingNet(nn.Module):
 
         return x
 
-    def accuracy(self, dataloader, device=torch.device("cpu"), depth=6, print_summary=False):
+    def accuracy(self, dataloader, device=torch.device("cpu"), depth=6, print_summary=False,
+                 verbose=False, threshold=0.5):
 
         # Empty tensors to store predictions and labels
-        predictions_soft = torch.Tensor().float().cpu().view((0, 0))
-        labels = torch.Tensor().float().cpu().view((0, 0))
+        predictions_soft = torch.zeros([0, 24000]).float().to(device)
+        labels = torch.zeros([0, 24000]).float().to(device)
 
         print('[Evaluation of the test samples...]')
         self.eval()  # Validation Mode
         with torch.no_grad():  # No need to track the gradients
 
-            for batch in tqdm(dataloader):
+            if verbose:
+                dataloader = tqdm(dataloader)
+
+            for batch in dataloader:
                 # Extract noisy waterfalls and move tensors to the selected device
                 noisy_waterfalls = batch['Waterfalls'].to(device)
+                signals = batch['SignalWaterfalls'].to(device)
 
                 # Forward pass - Reconstructed Waterfalls
                 waterfalls_rec = self.forward(noisy_waterfalls, depth=depth)
 
                 # Flatten the reconstructed waterfalls and append it to the predictions
-                predictions_soft = torch.cat((predictions_soft, waterfalls_rec.view([waterfalls_rec.size(0), -1])),
+                predictions_soft = torch.cat((predictions_soft,
+                                              waterfalls_rec.view([waterfalls_rec.size(0), -1])),
                                              dim=0)
 
                 # Flatten the signals and append it to the labels
-                labels = torch.cat((labels, batch['SignalWaterfalls'].cpu().view([waterfalls_rec.size(0), -1])), dim=0)
+                labels = torch.cat((labels, signals.view([waterfalls_rec.size(0), -1])), dim=0)
 
         # Compute hard prediction and convert data form tensors to numpy vectors
-        predictions = utils.binary_threshold(predictions_soft, threshold=0.5).view([-1]).numpy()
-        labels = labels.view([-1]).numpy()
+        predictions = utils.binary_threshold(predictions_soft, threshold=threshold,
+                                             device=device).view([-1]).cpu().numpy()
+        labels = labels.view([-1]).cpu().numpy()
 
         print('[Computation of the accuracy metrics...]')
         # Collects several evaluation metrics
@@ -118,8 +126,8 @@ def freeze_block(block, freeze, verbose=False):
         print('\tBlock ' + block.index.__str__() + ' Frozen: ' + freeze.__str__())
 
 
-def train_network(net, dataloader_train, dataloader_eval, num_epochs, optimizer, device, depth=1, full_train=False):
-
+def train_network(net, dataloader_train, dataloader_eval, num_epochs, optimizer, device,
+                  depth=1, full_train=False, mode='autoecoder'):
     # Empty lists to store training statistics
     train_loss = []
     eval_loss = []
@@ -127,15 +135,15 @@ def train_network(net, dataloader_train, dataloader_eval, num_epochs, optimizer,
     train_accuracy = []
     eval_accuracy = []
 
-    # Training Phase
-    if full_train:
-        # Set the entire network in train mode
-        net.train()
-    else:
-        # Set only the desired block in train mode
-        net.train_block(depth - 1)
-
     for epoch in range(num_epochs):
+
+        # Training Phase
+        if full_train:
+            # Set the entire network in train mode
+            net.train()
+        else:
+            # Set only the desired block in train mode
+            net.train_block(depth - 1)
 
         # Show the progress bar
         if net.verbose:
@@ -150,14 +158,17 @@ def train_network(net, dataloader_train, dataloader_eval, num_epochs, optimizer,
 
             # Extract useful data and move tensors to the selected device
             waterfalls = batch['Waterfalls'].to(device)
-            signals = batch['SignalWaterfalls'].to(device)
+            if mode == 'tracker':
+                labels = batch['Paths2D'].to(device)
+            else:
+                labels = batch['SignalWaterfalls'].to(device)
 
             # Reset the parameters' gradient to zero
             optimizer.zero_grad()
 
             # Forward pass
             output = net.forward(waterfalls, depth=depth)
-            loss = net.loss_fn(output, signals)
+            loss = net.loss_fn(output, labels)
 
             # Backward pass
             loss.backward()
@@ -179,13 +190,16 @@ def train_network(net, dataloader_train, dataloader_eval, num_epochs, optimizer,
             for batch in dataloader_eval:
                 # Extract useful data and move tensors to the selected device
                 waterfalls = batch['Waterfalls'].to(device)
-                signals = batch['SignalWaterfalls'].to(device)
+                if mode == 'tracker':
+                    labels = batch['Paths2D'].to(device)
+                else:
+                    labels = batch['SignalWaterfalls'].to(device)
 
                 # Forward pass
                 output = net.forward(waterfalls, depth=depth)
 
                 # Get loss value
-                loss = net.loss_fn(output, signals)
+                loss = net.loss_fn(output, labels)
                 batch_loss_eval.append(loss.data.cpu().numpy())
 
         eval_loss.append(np.mean(batch_loss_eval))
@@ -197,20 +211,32 @@ def train_network(net, dataloader_train, dataloader_eval, num_epochs, optimizer,
 
 # Show a summary of DenoisingNet
 if __name__ == '__main__':
+    WATERFALLS_SIZE = (1200, 20)
     train_part, validation_part, test_part = get_indices()
 
     # Load the trained model
-    load_configuration = 'DAE9B-9B-fd'
-    net_state_dict = torch.load('data/' + load_configuration + '_net_parameters.torch', map_location='cpu')
+    mode = 'a'
+    load_configuration = 'DenoisingNet-5e'
+    configuration = torch.load('data/' + load_configuration + '_net_parameters.torch', map_location='cpu')
 
     # Initialize the network
     net = DenoisingNet(verbose=True)
+
+
     # Set the loaded parameters to the network
-    net.load_state_dict(net_state_dict)
+    net.load_state_dict(configuration['DenoisingNet'])
 
     # Load the dataset
+    if mode == 'tracking':
+        transform = transforms.Compose(
+                             [utils.NormalizeSignal(WATERFALLS_SIZE),
+                              utils.Paths2D(WATERFALLS_SIZE)]
+                         )
+    else:
+        transform = utils.NormalizeSignal((1200, 20))
+
     dataset = Waterfalls(fpath='../../DATASETS/Waterfalls/Waterfalls_fish.mat',
-                         transform=utils.NormalizeSignal((1200, 20)))
+                         transform=transform)
 
     # %% Evaluate the accuracy metrics
     test_samples = DataLoader(dataset, batch_size=32,
@@ -253,6 +279,7 @@ if __name__ == '__main__':
         output = net.forward(waterfalls, depth=6)
 
     # Plot the waterfalls, the output of the network and the waterfalls without the noise
-    utils.plot_reconstruction(waterfalls, output, signals, parameters, hard_threshold=False, show_error=False)
+    utils.plot_reconstruction(waterfalls, output, signals, parameters, hard_threshold=False,
+                              show_error=False, save=True)
 
 

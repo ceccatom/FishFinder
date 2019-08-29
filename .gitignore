@@ -36,4 +36,4 @@ train_dense.py
 
 models/denseclassifier.py
 
-models/data/
+figs/

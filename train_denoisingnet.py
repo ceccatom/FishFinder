@@ -19,7 +19,7 @@ lr = 1e-3  # Learning rate
 batchsize = 32
 # max_sample = 60000
 train_blocks = [1, 2, 3, 4, 5, 6]
-block_epochs = 3
+block_epochs = 5
 final_train = True
 open_config = None
 ##########################
@@ -93,6 +93,7 @@ statistics = {
     }
 }
 
+net_state_dict = None
 # Training
 for index, block in enumerate(train_blocks):
     print('[ Training of block ' + block.__str__() + ' ]')
@@ -116,8 +117,11 @@ for index, block in enumerate(train_blocks):
     statistics['loss']['eval'][index].append(loss_eval)
     statistics['accuracy']['train'][index].append(acc_train)
     statistics['accuracy']['train'][index].append(acc_eval)
+    # Save the network state
+    net_state_dict = net.state_dict()  # The state dictionary includes all the parameters of the network
 
 if final_train:
+    print('Training of the entire network')
     # Perform the final training the involves all the blocks
     for b in net.blocks:
         freeze_block(b, False)
@@ -130,22 +134,23 @@ if final_train:
                                                                device=current_device,
                                                                optimizer=optim,
                                                                num_epochs=block_epochs,
-                                                               depth=6)
+                                                               depth=6,
+                                                               full_train=True)
 
     # Save the training results
-    statistics['loss']['train'][10].append(loss_train)
-    statistics['loss']['eval'][10].append(loss_eval)
-    statistics['accuracy']['train'][10].append(acc_train)
-    statistics['accuracy']['train'][10].append(acc_eval)
+    statistics['loss']['train'][6].append(loss_train)
+    statistics['loss']['eval'][6].append(loss_eval)
+    statistics['accuracy']['train'][6].append(acc_train)
+    statistics['accuracy']['train'][6].append(acc_eval)
 
-# Save the network state
-net_state_dict = net.state_dict()  # The state dictionary includes all the parameters of the network
+# Save the state dict to a file
 torch.save({
     'DenoisingNet': net_state_dict,
+    'FinalTraining': net.state_dict(),
     'statistics': statistics,
     'hyperparam': {
         'lr': lr,
         'batchsize': batchsize,
         'block_epochs': block_epochs
     }
-}, 'data/' + reference_time + '_net_parameters.torch')  # Save the state dict to a file
+}, 'data/' + reference_time + '_net_parameters.torch')

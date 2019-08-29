@@ -2,6 +2,8 @@ import torch
 from scipy.stats import halfnorm
 import matplotlib.pyplot as plt
 import numpy as np
+import seaborn as sns
+import pandas as pd
 
 
 def waterfalls_collate(batch):
@@ -14,6 +16,7 @@ def waterfalls_collate(batch):
     paths = []
     waterfalls = []
     signal_waterfalls = []
+    paths2d = []
 
     # TODO Consider to create two different versions of this function optimized for the two networks.
     #  In fact DenoisingNet just need waterfalls and signals whereas FishClassifier does not need signals but waterfalls
@@ -32,12 +35,20 @@ def waterfalls_collate(batch):
         # Append signals and convert them into tensors
         signal_waterfalls.append(get_tensor(item['SignalWaterfalls'], float_cast=True))
 
+        if 'Paths2D' in item.keys():
+            paths2d.append(get_tensor(item['Paths2D'], float_cast=True))
+
     batch_dictionary = {
         'Parameters': parameters,
         'Paths': paths,
         'Waterfalls': torch.stack(waterfalls).unsqueeze(1),
-        'SignalWaterfalls': torch.stack(signal_waterfalls).unsqueeze(1)
+        'SignalWaterfalls': torch.stack(signal_waterfalls).unsqueeze(1),
     }
+
+    if 'Paths2D' in item.keys():
+        batch_dictionary.update({
+            'Paths2D': torch.stack(paths2d).unsqueeze(1)
+        })
 
     return batch_dictionary
 
@@ -70,7 +81,7 @@ def get_tensor(element, float_cast=False, unsqueeze=0, long=False):
     if long:
         out_tensor = torch.LongTensor(element)
     else:
-        out_tensor = torch.tensor(element)  # torch.LongTensor(element)
+        out_tensor = torch.tensor(element)
 
     if float_cast:
         out_tensor = out_tensor.float()
@@ -81,13 +92,13 @@ def get_tensor(element, float_cast=False, unsqueeze=0, long=False):
     return out_tensor
 
 
-def binary_threshold(batch, threshold=0.5):
+def binary_threshold(batch, threshold=0.5, device=torch.device("cpu")):
     assert isinstance(threshold, float)
-    t = torch.Tensor([threshold])  # threshold
+    t = torch.Tensor([threshold]).to(device)  # threshold
     return (batch > t).float()
 
 
-def plot_reconstruction(raw, rec, original, parameters, hard_threshold=True, show_error=False):
+def plot_reconstruction(raw, rec, original, parameters, hard_threshold=True, show_error=False, save=False):
     num_subplots = 4
 
     data = np.zeros((num_subplots, 1200, 20))
@@ -103,7 +114,7 @@ def plot_reconstruction(raw, rec, original, parameters, hard_threshold=True, sho
               + ' | Width ' + parameters['width'].__str__()
               + ' | #Targets ' + parameters['num_Targets'].__str__()
               + '\nRAW data (Waterfalls)',
-              'DAE Output (Reconstructed Signal Waterfalls)',
+              'DenoisingNet Output (Reconstructed Signal Waterfalls)',
               'True paths (Signal Waterfalls)']
 
     if show_error:
@@ -115,6 +126,9 @@ def plot_reconstruction(raw, rec, original, parameters, hard_threshold=True, sho
     v_min = data.min()
     v_max = data.max()
 
+    # Load style file
+    plt.style.use('../styles.mplstyle')
+
     fig, axs = plt.subplots(num_subplots, 1, figsize=(12, 10), sharex=True)
 
     for idx in range(num_subplots):
@@ -122,7 +136,12 @@ def plot_reconstruction(raw, rec, original, parameters, hard_threshold=True, sho
         axs[idx].imshow(data[idx], aspect='auto', interpolation='none', origin='lower', vmin=v_min, vmax=v_max)
 
     fig.tight_layout()
+
+    if save:
+        esito = fig.savefig('./sample_reconstruction.pdf', dpi=300)
+
     fig.show()
+
 
 
 class AddNoise(object):
@@ -167,8 +186,31 @@ class NormalizeSignal(object):
         return sample
 
 
-class OneCol(object):
-    """Normalize 'Waterfalls' between 0 and 1
+class Paths2D(object):
+
+    def __init__(self, output_size):
+        assert isinstance(output_size, (int, tuple))
+        if isinstance(output_size, int):
+            self.output_size = (output_size, output_size)
+        else:
+            assert len(output_size) == 2
+            self.output_size = output_size
+
+    def __call__(self, sample):
+        sample['Paths2D'] = np.zeros((1200, 20), dtype=bool)
+        support = np.zeros(shape=(1200 * 20), dtype=bool)
+        if sample['Parameters']['num_Targets'] > 0:
+            for i in range(sample['Paths'].shape[1]):
+                linear_idxs = (sample['Paths'][:, i].astype(int), np.linspace(0, 19, 20, dtype=int))
+                support[np.ravel_multi_index(linear_idxs, (1200, 20))] = True
+                sample['Paths2D'] = np.bitwise_or(sample['Paths2D'], np.reshape(support, (1200, 20)))
+                support[:] = False
+        sample['Paths2D'] = sample['Paths2D'].astype(int)
+        return sample
+
+
+class OrderPaths(object):
+    """Sort the paths in ascending order by using their mean
 
     """
 
@@ -181,10 +223,18 @@ class OneCol(object):
             self.output_size = output_size
 
     def __call__(self, sample):
-
-        sample['SignalWaterfalls'] = np.array([sample['Parameters']['num_Targets'], sample['Parameters'][
-            'num_Targets']])  # np.sum(np.transpose(sample['SignalWaterfalls'])[:][0:1])
-
+        # means = np.mean(sample['Paths'], axis=0)
+        # sample['Paths'] = np.array(sample['Paths'][:, np.argsort(means)], dtype=int)
+        tmp = np.zeros((12, 1200, 20))
+        support = np.zeros((1200 * 20))
+        branches = np.random.permutation([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
+        if sample['Parameters']['num_Targets'] > 0:
+            for i in range(sample['Paths'].shape[1]):
+                sub_idxs = (sample['Paths'][:, i], np.linspace(0, 19, 20, dtype=int))
+                support[np.ravel_multi_index(sub_idxs, (1200, 20))] = 1
+                tmp[branches[i], :, :] = np.reshape(support, (1200, 20))
+                support[:] = 0
+        sample['Paths2D'] = np.sum(tmp, axis=0)
         return sample
 
 
@@ -230,7 +280,8 @@ def update_onehot_labels(batch, labels_container, velocity_labels, width_labels,
 def plot_confusion_matrix(cm, classes,
                           normalize=False,
                           title=None,
-                          cmap=plt.cm.Blues):
+                          cmap=plt.cm.Blues,
+                          save=False):
     """
     This function prints and plots the confusion matrix.
     Normalization can be applied by setting `normalize=True`.
@@ -275,6 +326,11 @@ def plot_confusion_matrix(cm, classes,
                     color="white" if cm[i, j] > thresh else "black")
     fig.tight_layout()
     fig.show()
+
+    if save:
+        # Load style file
+        # plt.style.use('./styles.mplstyle')
+        fig.savefig('./conf_matrix.pdf', dpi=300)
     pass
 
 
@@ -287,39 +343,134 @@ def get_labels(batch, device):
     return waterfalls, velocity_labels, width_labels, targets_labels
 
 
-# def plot_compressed(net, input, original, parameters, hard_threshold=True, show_error=False):
-#     num_subplots = 10
-#
-#     data = np.zeros((num_subplots, 1200, 20))
-#     data[0][:][:] = raw.cpu().squeeze().numpy()
-#     if hard_threshold:
-#         data[1][:][:] = binary_threshold(rec.cpu().squeeze().numpy(), 0.5)
-#     else:
-#         data[1][:][:] = rec.cpu().squeeze().numpy()
-#     data[2][:][:] = original.cpu().squeeze().numpy()
-#
-#     titles = ['SNR ' + parameters['SNR'].__str__()
-#               + ' | Velocity ' + parameters['velocity'].__str__()
-#               + ' | Width ' + parameters['width'].__str__()
-#               + ' | #Targets ' + parameters['num_Targets'].__str__()
-#               + '\nRAW data (Waterfalls)',
-#               'DAE Output (Reconstructed Signal Waterfalls)',
-#               'True paths (Signal Waterfalls)']
-#
-#     if show_error:
-#         data[3][:][:] = (original - rec).cpu().squeeze().numpy()
-#         titles.append('Reconstruction Error')
-#     else:
-#         num_subplots = 3
-#
-#     v_min = data.min()
-#     v_max = data.max()
-#
-#     fig, axs = plt.subplots(num_subplots, 1, figsize=(12, 10), sharex=True)
-#
-#     for idx in range(num_subplots):
-#         axs[idx].set_title(titles[idx])
-#         axs[idx].imshow(data[idx], aspect='auto', interpolation='none', origin='lower', vmin=v_min, vmax=v_max)
-#
-#     fig.tight_layout()
-#     fig.show()
+def get_classes():
+    classes = {
+        't': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        'v': [15, 16, 17, 18, 19, 20],
+        'w': [3, 4, 5, 6, 7, 8, 9, 10]
+    }
+    config = {
+        't_dim': len(classes['t']),
+        'v_dim': len(classes['v']),
+        'w_dim': len(classes['w']),
+        'IntermediateDimension': None,
+        'HiddenFeaturesDimension': None
+    }
+
+    return classes, config
+
+
+def filter_indices(indices, parameters, min_snr=0, min_width=3, min_velocity=15):
+    # Convert list to a numpy array
+    indices = np.array(indices)
+
+    # Check where data satisfies the required condition
+    snr_cond = parameters[0, indices] >= min_snr
+    width_cond = parameters[2, indices] >= min_width
+    velocity_cond = parameters[1, indices] >= min_velocity
+
+    # Bit-wise AND to satisfy all the conditions at the same time
+    mask = np.bitwise_and(snr_cond, width_cond)
+    mask = np.bitwise_and(mask, velocity_cond)
+
+    # Return the filtered indices as python list
+    return indices[mask].tolist()
+
+
+def classification_performance(fpath, save=False):
+    results = np.load(fpath)
+
+    classes, config = get_classes()
+
+    sns.set(style="ticks")
+
+    min_snr = np.linspace(1, 3, 10)
+    min_w = np.linspace(3, 10, 8)
+    min_v = np.array([15, 18])
+    dict1 = {
+        'Minimum width': [],
+        'Minimum SNR': [],
+        'Minimum velocity': [],
+        'Accuracy': [],
+        'align': []
+    }
+
+    for k in range(2):
+        for i in range(8):
+            for j in range(10):
+                conf_matrix = results[k, i, j]
+                tot = np.sum(conf_matrix, axis=None)
+                tp = np.trace(conf_matrix)
+                wrong = tot - tp
+                if tot > 500:
+                    dict1['Accuracy'].append(tp / tot)
+                    dict1['Minimum SNR'].append(min_snr[j])
+                    dict1['Minimum velocity'].append(min_v[k])
+                    dict1['Minimum width'].append(min_w[i])
+                    dict1['align'].append('dots')
+
+    data = pd.DataFrame(data=dict1)  # sns.load_dataset("dots")
+
+    # Define a palette to ensure that colors will be
+    # shared across the facets
+    palette = dict(zip(data['Minimum width'].unique(),
+                       sns.cubehelix_palette(8, start=.5, rot=-.75)))
+
+    # Load style file
+    plt.style.use('./styles.mplstyle')
+
+    # Plot the lines on two facets
+    p = sns.relplot(x="Minimum SNR", y="Accuracy",
+                    hue="Minimum width", col="Minimum velocity",  # size="Minimum velocity", #
+                    size_order=[15, 18], palette=palette,
+                    height=5, aspect=.75, facet_kws=dict(sharex=False),
+                    kind="line", legend="full", data=data)
+
+    p.savefig('figs/classification_accuracy.pdf', dpi=300)
+
+def denoising_performance(fpath, save=False):
+    results = np.load(fpath)
+
+    sns.set(style="ticks")
+
+    metric = 'F-Score'
+
+    min_snr = np.linspace(1, 3, 10)
+    min_w = np.linspace(3, 10, 8)
+    min_v = np.array([15, 18])
+    dict1 = {
+        'Minimum width': [],
+        'Minimum SNR': [],
+        'Minimum velocity': [],
+        metric: []
+    }
+
+
+    for k in range(2):
+        for i in range(8):
+            for j in range(10):
+                dict1[metric].append(results.item()[metric][k, i, j][0])
+                dict1['Minimum SNR'].append(min_snr[j])
+                dict1['Minimum velocity'].append(min_v[k])
+                dict1['Minimum width'].append(min_w[i])
+
+    data = pd.DataFrame(data=dict1)
+
+    # Define a palette to ensure that colors will be
+    # shared across the facets
+    palette = dict(zip(data['Minimum width'].unique(),
+                       sns.cubehelix_palette(8, start=.5, rot=-.75)))
+
+    # Load style file
+    plt.style.use('./styles.mplstyle')
+
+    # Plot the lines on two facets
+    p = sns.relplot(x="Minimum SNR", y=metric,
+                    hue="Minimum width", col="Minimum velocity",  # size="Minimum velocity", #
+                    size_order=[15, 18], palette=palette,
+                    height=5, aspect=.75, facet_kws=dict(sharex=False),
+                    kind="line", legend="full", data=data)
+
+    p.savefig('figs/denoising_' + metric + '.pdf', dpi=300)
+    plt.show()
+
